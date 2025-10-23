@@ -1,0 +1,169 @@
+# server-fix.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: litmus-server
+    app.kubernetes.io/instance: chaos
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: litmus
+    app.kubernetes.io/part-of: litmus
+    app.kubernetes.io/version: 3.22.0
+    helm.sh/chart: litmus-3.22.0
+    litmuschaos.io/version: 3.22.0
+  name: chaos-litmus-server
+  namespace: litmus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: litmus-server
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: litmus-server
+        app.kubernetes.io/instance: chaos
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: litmus
+        app.kubernetes.io/part-of: litmus
+        app.kubernetes.io/version: 3.22.0
+        helm.sh/chart: litmus-3.22.0
+        litmuschaos.io/version: 3.22.0
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        # --- CORRECT CREDENTIALS FOR MAIN CONTAINER ---
+        - name: DB_USER
+          value: "root"
+        - name: DB_PASSWORD
+          value: "litmus123"
+        # -----------------------------------------------
+        # Keep other env vars
+        - name: LITMUS_AUTH_GRPC_ENDPOINT
+          value: chaos-litmus-auth-server-service
+        - name: LITMUS_AUTH_GRPC_PORT
+          value: "3030"
+        - name: ENABLE_INTERNAL_TLS
+          value: "false"
+        - name: REST_PORT
+          value: "8080"
+        - name: GRPC_PORT
+          value: "8000"
+        - name: ALLOWED_ORIGINS
+          value: .*
+        - name: HTTP_PROXY
+        - name: HTTPS_PROXY
+        - name: NO_PROXY
+        - name: ARGO_WORKFLOW_CONTROLLER_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/workflow-controller:v3.3.1
+        - name: ARGO_WORKFLOW_EXECUTOR_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/argoexec:v3.3.1
+        - name: EVENT_TRACKER_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/litmusportal-event-tracker:3.22.0
+        - name: LITMUS_CHAOS_EXPORTER_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/chaos-exporter:3.22.0
+        - name: LITMUS_CHAOS_OPERATOR_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/chaos-operator:3.22.0
+        - name: LITMUS_CHAOS_RUNNER_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/chaos-runner:3.22.0
+        - name: SUBSCRIBER_IMAGE
+          value: litmuschaos.docker.scarf.sh/litmuschaos/litmusportal-subscriber:3.22.0
+        - name: CHAOS_CENTER_UI_ENDPOINT
+        - name: CONTAINER_RUNTIME_EXECUTOR
+          value: k8sapi
+        - name: DEFAULT_HUB_BRANCH_NAME
+          value: v3.22.x
+        - name: ENABLE_GQL_INTROSPECTION
+          value: "false"
+        - name: INFRA_COMPATIBLE_VERSIONS
+          value: '["3.22.0"]'
+        - name: INFRA_DEPLOYMENTS
+          value: '["app=chaos-exporter", "name=chaos-operator", "app=event-tracker",
+            "app=workflow-controller"]'
+        - name: REMOTE_HUB_MAX_SIZE
+          value: "5000000"
+        - name: TLS_CERT_64
+        - name: WORKFLOW_HELPER_IMAGE_VERSION
+          value: "3.22.0" # Ensure value is quoted
+        envFrom: # Keep envFrom as fallback/other config
+        - secretRef:
+            name: chaos-litmus-admin-secret
+        - configMapRef:
+            name: chaos-litmus-admin-config
+        image: litmuschaos.docker.scarf.sh/litmuschaos/litmusportal-server:3.22.0
+        imagePullPolicy: Always
+        name: graphql-server # Correct container name
+        ports:
+        - containerPort: 8080
+          name: gql-server
+          protocol: TCP
+        - containerPort: 8000
+          name: gql-rpc-server
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 550m
+            memory: 712Mi
+          requests:
+            cpu: 225m
+            memory: 250Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 2000
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/
+          name: gitops-storage
+        - mountPath: /tmp/version
+          name: hub-storage
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - args:
+        # Corrected command with -u ${DB_USER}
+        - until [[ $(mongosh -u ${DB_USER} -p ${DB_PASSWORD} ${DB_SERVER} --eval 'db.adminCommand("ping")' | grep 'ok' | wc -l) -eq 1 ]]; do sleep 5; echo 'Waiting for the MongoDB to be ready...'; done; echo 'Connection with MongoDB established'
+        command:
+        - /bin/bash
+        - -c
+        env:
+        # --- CORRECT CREDENTIALS FOR INIT CONTAINER ---
+        - name: DB_USER
+          value: "root"
+        - name: DB_PASSWORD
+          value: "litmus123"
+        # -----------------------------------------------
+        - name: DB_SERVER # Read correct DB_SERVER from ConfigMap
+          valueFrom:
+            configMapKeyRef:
+              key: DB_SERVER
+              name: chaos-litmus-admin-config
+        image: litmuschaos.docker.scarf.sh/litmuschaos/mongo:6 # Image containing mongosh
+        imagePullPolicy: Always
+        name: wait-for-mongodb # Required field: name
+        resources:
+           limits:
+             cpu: 250m
+             memory: 512Mi
+           requests:
+             cpu: 25m
+             memory: 150Mi
+        securityContext: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: gitops-storage
+      - emptyDir: {}
+        name: hub-storage

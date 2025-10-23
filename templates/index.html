@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tech Vote</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <h1>Which tech company are you rooting for?</h1>
+    </header>
+
+    <main class="card-container">
+        {{range .Companies}}
+        <div class="card">
+            <div class="card-logo {{.LogoClass}}"></div>
+            <h2 class="card-title">{{.Name}}</h2>
+            <p class="vote-count" id="count-{{.Name}}">{{.Votes}}</p>
+            <button class="vote-button" data-company="{{.Name}}">
+                Vote
+            </button>
+        </div>
+        {{end}}
+    </main>
+
+    <footer>
+        <p>Self-Healing Infrastructure Project</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

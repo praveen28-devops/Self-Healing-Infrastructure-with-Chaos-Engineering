@@ -1,0 +1,16 @@
+portal:
+  server:
+    graphqlServer:
+      imageTag: "3.10.0"
+    authServer:
+      imageTag: "3.10.0"
+  frontend:
+    imageTag: "3.10.0"
+
+mongodb:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    rootPassword: "litmus1234"
+    rootUser: "root"

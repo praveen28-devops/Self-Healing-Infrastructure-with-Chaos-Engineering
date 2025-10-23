@@ -1,0 +1,62 @@
+# prometheus-rules.yml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  # Create this in the 'monitoring' namespace
+  namespace: monitoring
+  name: go-app-slo-rules
+  # Add this label so the Prometheus Operator finds this rule
+  labels:
+    release: monitoring # Matches the Helm release name
+spec:
+  groups:
+  - name: go_app_slos
+    interval: 1m # How often to calculate the rules
+    rules:
+    # 1. SLO: REQUEST AVAILABILITY (Recording Rule)
+    # Creates a new metric: go_app:http_requests:availability_slo_1m
+    - record: go_app:http_requests:availability_slo_1m
+      expr: |
+        (
+          sum(rate(go_app_http_requests_total{job="go-app-svc", status!~"5.*"}[1m]))
+          /
+          sum(rate(go_app_http_requests_total{job="go-app-svc"}[1m]))
+        ) or vector(1) # Default to 100% if no traffic
+      labels:
+        service: go-app # Label for grouping/filtering
+
+  - name: go_app_alerts
+    interval: 1m
+    rules:
+    # 2. ALERT: FAST BURN (Critical)
+    - alert: GoAppAvailabilityFastBurn
+      annotations:
+        summary: "GoApp availability is low (Fast Burn)"
+        description: |
+          High error rate on '{{ $labels.service }}'.
+          Availability dropped to {{ $value | humanizePercentage }} over the last 1 hour.
+          Target SLO: 99%
+      # Use the recording rule we created above
+      # Fire if availability over 1 min is less than 90%
+      expr: |
+        go_app:http_requests:availability_slo_1m{service="go-app"} < 0.90
+      # Alert must be true for 1 minute before firing
+      for: 1m
+      labels:
+        severity: critical # For Alertmanager routing
+
+    # 3. ALERT: SLOW BURN (Warning)
+    - alert: GoAppAvailabilitySlowBurn
+      annotations:
+        summary: "GoApp availability is degrading (Slow Burn)"
+        description: |
+          Steady error rate on '{{ $labels.service }}'.
+          Availability dropped to {{ $value | humanizePercentage }} over the last 6 hours.
+          Target SLO: 99%
+      # Fire if availability over 1 min is less than 95%
+      expr: |
+        go_app:http_requests:availability_slo_1m{service="go-app"} < 0.95
+      # Alert must be true for 30 minutes before firing
+      for: 30m
+      labels:
+        severity: warning # For Alertmanager routing

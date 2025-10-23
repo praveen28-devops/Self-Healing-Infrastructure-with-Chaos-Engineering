@@ -1,0 +1,40 @@
+# pod-delete.yml: Simulates random pod failure
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: go-app-pod-delete
+  namespace: default
+spec:
+  engineState: 'active'
+  chaosServiceAccount: litmus-admin
+  # --- TARGET APPLICATION DEFINITION (MOVED HERE) ---
+  appinfo:
+    appns: 'default'
+    applabel: 'app=go-app'
+    appkind: 'deployment'
+  # --------------------------------------------------
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          probe:
+            - name: "check-app-health"
+              type: "httpProbe"
+              httpProbe/inputs:
+                url: "http://go-app-svc.default.svc.cluster.local:80/"
+                method:
+                  get:
+                    criteria: ==
+                    responseCode: "200"
+              mode: "Continuous"
+              runProperties:
+                probeTimeout: 5s
+                interval: 2s
+                retry: 1
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '120'
+            - name: PODS_AFFECTED_PERC
+              value: '34'
+            - name: FORCE
+              value: 'true'

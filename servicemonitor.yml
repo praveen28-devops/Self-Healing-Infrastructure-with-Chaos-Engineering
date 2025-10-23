@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: go-app-servicemonitor
+  # Create this in the 'monitoring' namespace, where Prometheus lives
+  namespace: monitoring
+  # Add this label to match the Prometheus instance's ServiceMonitor selector
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      # This label must match the label we just added to 'go-app-svc'
+      app: go-app
+  # This tells the ServiceMonitor to look for services in the 'default' namespace
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+  # This 'port' name must match the 'name' we added to the service's port
+  - port: http 
+    path: /metrics # The path your app exposes metrics on
+    interval: 15s # Scrape every 15 seconds

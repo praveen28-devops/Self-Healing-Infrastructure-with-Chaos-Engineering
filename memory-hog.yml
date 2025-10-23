@@ -1,0 +1,42 @@
+# memory-hog.yml: Simulates high memory consumption
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: go-app-memory-hog
+  namespace: default
+spec:
+  engineState: 'active'
+  chaosServiceAccount: litmus-admin
+  # --- TARGET APPLICATION DEFINITION (CORRECT LOCATION) ---
+  appinfo:
+    appns: 'default'
+    applabel: 'app=go-app'
+    appkind: 'deployment'
+  # --------------------------------------------------------
+  experiments:
+    - name: pod-memory-hog
+      spec:
+        components:
+          probe:
+            - name: "check-app-health"
+              type: "httpProbe"
+              httpProbe/inputs:
+                url: "http://go-app-svc.default.svc.cluster.local:80/health" 
+                method:
+                  get:
+                    criteria: ==
+                    responseCode: "200"
+              mode: "Continuous"
+              runProperties:
+                probeTimeout: 5s
+                interval: 5s
+                retry: 1
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '120'
+            - name: MEMORY_CONSUMPTION
+              value: '100' # Hog 100 MB of memory (Your limit is 128Mi)
+            - name: PODS_AFFECTED_PERC
+              value: '100'
+            - name: TARGET_CONTAINER
+              value: 'go-app'

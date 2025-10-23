@@ -1,0 +1,43 @@
+# cpu-stress.yml: Simulates high CPU load
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: go-app-cpu-stress
+  namespace: default
+spec:
+  engineState: 'active'
+  chaosServiceAccount: litmus-admin
+  # --- TARGET APPLICATION DEFINITION (CORRECT LOCATION) ---
+  appinfo:
+    appns: 'default'
+    applabel: 'app=go-app'
+    appkind: 'deployment'
+  # --------------------------------------------------------
+  experiments:
+    - name: pod-cpu-hog
+      spec:
+        components:
+          probe:
+            - name: "check-process-status"
+              type: "cmdProbe"
+              cmdProbe/inputs:
+                # Check for the running application process ID (pid)
+                command: "pidof main" # Check for the Go binary name
+                comparator:
+                  criteria: '!='
+                  value: ''
+                  type: 'string'
+              mode: "Continuous"
+              runProperties:
+                probeTimeout: 5s
+                interval: 2s
+                retry: 1
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '120'
+            - name: CPU_CORES
+              value: '1' 
+            - name: PODS_AFFECTED_PERC
+              value: '100'
+            - name: TARGET_CONTAINER
+              value: 'go-app'

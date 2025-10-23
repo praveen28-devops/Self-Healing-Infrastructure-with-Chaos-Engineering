@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: slack-config
+  # This must be in the 'monitoring' namespace
+  namespace: monitoring
+  # This label tells the Prometheus Operator to use this config
+  labels:
+    release: monitoring
+spec:
+  route:
+    # Send all alerts (group_by: [...]) to the 'slack-criticals' receiver
+    receiver: 'slack-criticals'
+  
+  receivers:
+  - name: 'slack-criticals'
+    slackConfigs:
+    - apiURL:
+        # --- THIS IS THE CORRECTED PART ---
+        # We removed the extra 'secret:' key
+        name: alertmanager-slack-url # Name of the Secret
+        key: webhook_url             # Key within the Secret
+        # ----------------------------------
+      
+      # This makes the alerts look nice in Slack
+      title: '{{ .CommonAnnotations.summary }}'
+      text: '{{ .CommonAnnotations.description }}'
+      sendResolved: true # Send a "green" message when the alert is fixed

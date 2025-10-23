@@ -1,0 +1,138 @@
+# 1. DEPLOYMENT
+# Defines the desired state for our application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-app
+  labels:
+    app: go-app
+spec:
+  # Start with 3 replicas as requested
+  replicas: 3
+  selector:
+    matchLabels:
+      app: go-app
+  template:
+    metadata:
+      labels:
+        # This label is crucial for the Service and PDB to find the pods
+        app: go-app
+    spec:
+      # --- THIS IS THE NEW BLOCK TO PULL YOUR PRIVATE IMAGE ---
+      imagePullSecrets:
+      - name: ghcr-creds
+      # ---------------------------------------------------------
+      containers:
+      - name: go-app
+        # THIS IS THE CORRECT LINE with your username
+        image: ghcr.io/praveen28-devops/go-self-healing-app:v1.0.1
+        ports:
+        - containerPort: 8080
+        
+        # --- Liveness and Readiness Probes ---
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+
+        # --- Resources (CRITICAL FOR HPA) ---
+        resources:
+          requests:
+            cpu: "100m" # 0.1 of a CPU core
+            memory: "64Mi"
+          limits:
+            cpu: "500m" # 0.5 of a CPU core
+            memory: "128Mi"
+
+        # --- Environment Variables ---
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret 
+              key: url
+      
+      # --- ANTI-AFFINITY BLOCK HAS BEEN REMOVED ---
+
+---
+
+# 2. SERVICE
+# Exposes the Deployment to the internet
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-app-svc
+  # --- ADD THIS LABEL ---
+  # This label allows the ServiceMonitor to find this Service
+  labels:
+    app: go-app
+  # ---------------------
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/path:   '/metrics'
+    prometheus.io/port:   '8080'
+spec:
+  # LoadBalancer type exposes the service externally
+  type: LoadBalancer
+  selector:
+    # This selects pods with the label 'app: go-app'
+    app: go-app
+  ports:
+  - port: 80 # External port
+    targetPort: 8080 # Container's port
+    protocol: TCP
+    # --- ADD THIS NAME ---
+    # The ServiceMonitor will look for this port name
+    name: http
+    # -------------------
+---
+
+# 3. HORIZONTAL POD AUTOSCALER (HPA)
+# Automatically scales the Deployment based on CPU load
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: go-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    # Points to our Deployment
+    name: go-app 
+  
+  # Replica counts as requested
+  minReplicas: 3
+  maxReplicas: 20
+  
+  metrics:
+  # Triggers scaling when CPU utilization averages 50%
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+
+---
+
+# 4. POD DISRUPTION BUDGET (PDB)
+# Protects the app during voluntary disruptions (like node upgrades)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: go-app-pdb
+spec:
+  # Guarantees that at least 2 replicas are always available
+  minAvailable: 2
+  selector:
+    matchLabels:
+      # This selects the pods managed by our Deployment
+      app: go-app

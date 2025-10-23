@@ -1,0 +1,130 @@
+# cronjob.yml
+# This CronJob runs the remediation script every 5 minutes
+
+# 1. SERVICE ACCOUNT (Identity for the script)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remediation-sa
+  namespace: monitoring 
+
+---
+
+# 2. ROLE (Permissions needed by the script to restart deployments)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remediation-role
+  namespace: monitoring
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch", "update"] # Need patch/update for rollout restart
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+
+# 3. ROLE BINDING (Assigns the Role to the ServiceAccount)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remediation-binding
+  namespace: monitoring
+subjects:
+- kind: ServiceAccount
+  name: remediation-sa
+  namespace: monitoring
+roleRef:
+  kind: Role
+  name: remediation-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# 4. CONFIG MAP (Stores the actual remediation script)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: remediation-script-config
+  namespace: monitoring
+data:
+  # Load the content of your local remediate.sh file here
+  remediate.sh: |
+    # The full content of remediate.sh goes here (copy-paste the script content from above)
+    #!/bin/bash
+    ALERTMANAGER_URL="http://alertmanager-monitoring-kube-prometheus-alertmanager.monitoring:9093/api/v2/alerts"
+    APP_DEPLOYMENT="go-app"
+    APP_NAMESPACE="default"
+    ALERT_SEVERITY="critical"
+
+    echo "--- $(date) ---"
+    echo "Checking Alertmanager for critical alerts..."
+
+    ALERT_STATUS=$(curl -s -G $ALERTMANAGER_URL --data-urlencode "filter=status=firing,severity=${ALERT_SEVERITY}")
+    FIRING_COUNT=$(echo $ALERT_STATUS | jq '. | length')
+
+    if [[ $FIRING_COUNT -gt 0 ]]; then
+        echo "🚨 Critical Alert detected! Firing count: $FIRING_COUNT"
+        echo "Attempting remediation action: Restarting $APP_DEPLOYMENT in $APP_NAMESPACE..."
+
+        kubectl rollout restart deployment $APP_DEPLOYMENT -n $APP_NAMESPACE
+
+        if [ $? -eq 0 ]; then
+            echo "✅ Remediation successful! Deployment restart triggered."
+        else
+            echo "❌ Remediation FAILED! Could not restart deployment."
+        fi
+    else
+        echo "✅ System is healthy. No critical alerts firing."
+    fi
+
+    echo "-------------------"
+
+---
+
+# 5. CRON JOB (Schedules the execution)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: self-healing-cronjob
+  namespace: monitoring
+spec:
+  # Run every 5 minutes: '*/5 * * * *'
+  schedule: "*/5 * * * *" 
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # Use the ServiceAccount we defined
+          serviceAccountName: remediation-sa 
+          containers:
+          - name: remediator
+            # Use an Alpine image with basic tools (curl, jq) and kubectl
+            image: curlimages/curl:latest 
+            # Mount the script and execute it
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                apk update && apk add jq bash; # Install jq and bash
+                
+                # Copy the script content into the container's shell environment
+                echo "
+                $(cat /scripts/remediate.sh)
+                " > /tmp/remediate.sh
+                
+                # Execute the script (Need to use sh for the script to execute correctly)
+                /bin/sh /tmp/remediate.sh
+            
+            # Mount the remediation script as a ConfigMap volume
+            volumeMounts:
+            - name: remediation-script
+              mountPath: /scripts/remediate.sh
+              subPath: remediate.sh
+          restartPolicy: OnFailure
+          volumes:
+          - name: remediation-script
+            configMap:
+              name: remediation-script-config 
+              defaultMode: 0744 # Ensure the script is executable

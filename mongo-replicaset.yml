@@ -1,0 +1,57 @@
+# Simplified MongoDB Replica Set for LitmusChaos
+# This uses official mongo:6 image with single-node replica set
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: litmus
+spec:
+  serviceName: "mongo-service"
+  replicas: 1  # Single node replica set for simplicity
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:6.0
+        command:
+          - "mongod"
+          - "--bind_ip_all"
+          - "--replSet"
+          - "rs0"
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: "root"
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          value: "1234"
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+  volumeClaimTemplates:
+  - metadata:
+      name: mongo-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-service
+  namespace: litmus
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: mongo
+  ports:
+  - port: 27017
+    targetPort: 27017

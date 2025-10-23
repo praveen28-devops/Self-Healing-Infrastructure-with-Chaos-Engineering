@@ -1,0 +1,41 @@
+# network-latency.yml: Simulates network delay and checks Prometheus SLO
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: go-app-net-latency
+  namespace: default
+spec:
+  engineState: 'active'
+  chaosServiceAccount: litmus-admin
+  # --- TARGET APPLICATION DEFINITION (CORRECT LOCATION) ---
+  appinfo:
+    appns: 'default'
+    applabel: 'app=go-app'
+    appkind: 'deployment'
+  # --------------------------------------------------------
+  experiments:
+    - name: pod-network-latency
+      spec:
+        components:
+          probe:
+            - name: "check-prometheus-slo"
+              type: "promProbe"
+              promProbe/inputs:
+                # Query application HTTP request duration from Prometheus
+                query: 'avg(rate(go_app_http_request_duration_seconds_sum{job="go-app-svc"}[1m]))'
+                comparator:
+                  criteria: '<=' 
+                  value: '0.5' # Fail if avg latency exceeds 0.5s
+                endpoint: 'http://prometheus-monitoring-kube-prometheus-prometheus.monitoring:9090'
+              mode: "Continuous"
+              runProperties:
+                probeTimeout: 10s
+                interval: 5s
+                retry: 2
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: '120' # Run chaos for 2 minutes
+            - name: NETWORK_LATENCY
+              value: '1000' # Inject 1000ms (1 second) of latency
+            - name: PODS_AFFECTED_PERC
+              value: '100'
