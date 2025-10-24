@@ -1,7 +1,11 @@
-🛡️ Self-Healing Infrastructure with Chaos Engineering
+                 🛡️ Self-Healing Infrastructure with Chaos Engineering 
+
 Project Type: DevOps & SRE
+
 Skill Focus: Kubernetes - Prometheus - Grafana - LitmusChaos - GoLang - Postgres - Automation
-Automation Level: 100% (Zero-Touch Infrastructure)
+
+Automation Level: (Zero-Touch Infrastructure)
+
 📘 Project Overview
 
 This project demonstrates an industry-ready, automated Kubernetes platform that ensures application resiliency and availability through:
