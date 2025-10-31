@@ -148,4 +148,5 @@ kubectl delete pod -l app=go-app  # Observe auto-restart
 ## 🧾 Author
 
 **Created by:** Praveen – Cloud & DevOps Engineer
+
 **Specialization:** Kubernetes | AWS | OCI | CI/CD | SRE | Observability Automation
